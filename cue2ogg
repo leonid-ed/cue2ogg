@@ -1,0 +1,202 @@
+#!/usr/bin/python3 -d
+# -*- coding: utf-8 -*-
+
+import optparse
+import re
+import os.path
+import sys
+
+def removeQuotes(s):
+	r = s if s[0] != '"' and s[-1] != '"' else s[1:-1]
+	return r
+
+version = "%prog 0.1"
+usage = "%prog -c file.cue -d destdir"
+parser = optparse.OptionParser(usage = usage, version = version)
+
+parser.add_option('-c', '--cue',
+	action="store",
+	dest="cue",
+	help="input .cue-file",
+	metavar="CUE_FILE")
+
+parser.add_option('-d', '--dest',
+	action="store",
+	dest="dest",
+	help="destination directory",
+	metavar="DEST_DIR")
+
+(options, args) = parser.parse_args()
+
+if options.cue is None or options.dest is None:
+	parser.error("incorrect arguments!")
+
+# check if cue-file does not exist
+if not os.path.isfile(options.cue):
+	print ("Error: File '%s' is not exists" % options.cue)
+	sys.exit(1)
+
+# parse cue-file to get tags
+
+fileFormat     = None
+albumTitle     = None
+albumDate      = None
+albumGenre     = None
+albumComment   = None
+albumDiscId    = None
+albumPerformer = None
+
+trackNum       = None
+trackTitle     = None
+trackPerformer = None
+
+fileName = None
+
+rems = {}
+tracks = []
+info = {}
+isTrack = False
+
+for cue_line in open(options.cue, 'r'):
+	cue_line = cue_line.strip();
+	if len(cue_line) == 0:
+		continue
+
+	sSection, sArgs = cue_line.split(None, 1)
+	vals = sArgs.split(None, 1)
+
+	if isTrack == False:
+		if sSection == "REM":
+			rems[ vals[0] ] = vals[1]
+		elif sSection == "PERFORMER":
+			albumPerformer = removeQuotes(sArgs)
+		elif sSection == "TITLE":
+			albumTitle = removeQuotes(sArgs)
+		elif sSection == "FILE":
+			match = re.search("\"(.+)\"\s+WAVE", sArgs)
+			if not match is None: fileName = match.group(1)
+			match = re.search("\".+\.(.+)\"\s+WAVE", sArgs)
+			if not match is None: fileFormat = match.group(1)
+		elif sSection == "TRACK":
+			isTrack = True
+
+	if isTrack == True:
+		if sSection == "TRACK":
+			# save a description of a previous track
+			if len(info) > 0:
+				trackInfo = {}
+				trackInfo['TITLE']     = info.get('TITLE')
+				trackInfo['PERFORMER'] = info.get('PERFORMER')
+				trackInfo['NUM'] = trackNum
+				tracks.append(trackInfo)
+				info = {}
+
+			trackNum = vals[0]
+		else:
+			info[sSection] = removeQuotes(sArgs)
+
+# save a description of the last track
+if len(info) > 0:
+	trackInfo = {}
+	trackInfo['TITLE']     = info.get('TITLE')
+	trackInfo['PERFORMER'] = info.get('PERFORMER')
+	trackInfo['NUM'] = trackNum
+	tracks.append(trackInfo)
+	info = {}
+
+# sys.exit(0)
+
+albumDate    = rems.get('DATE')
+albumComment = removeQuotes( rems.get('COMMENT') )
+albumGenre   = removeQuotes( rems.get('GENRE')   )
+albumDiscId  = removeQuotes( rems.get('DISCID')  )
+
+print ("file:             '%s'" % fileName)
+print ("file format:      '%s'" % fileFormat)
+print ("album title:      '%s'" % albumTitle)
+print ("album perforemer: '%s'" % albumPerformer)
+print ("album date:       '%s'" % albumDate)
+print ("album genre:      '%s'" % albumGenre)
+print ("album comment:    '%s'" % albumComment)
+print ("album disc id:    '%s'" % albumDiscId)
+print ("")
+for t in tracks:
+	print ( "%s / '%s' / '%s'"
+		% (t.get('NUM'), t.get('PERFORMER'), t.get('TITLE')) )
+
+# sys.exit(0)
+
+# checks
+
+if not os.path.isfile(fileName):
+	print ("Error: File '%s' is not exists" % fileName)
+	sys.exit(1)
+
+if not os.path.isdir(options.dest):
+	print ("Error: Directory '%s' is not exists" % options.dest)
+	sys.exit(1)
+
+print ()
+print ("destination directory: '%s'" % options.dest)
+
+# get approval
+
+print ()
+answer = input("Continue? (Y/n): ")
+if answer == "n": sys.exit(0)
+
+# sys.exit(0)
+
+# exec extended commands
+
+cmd = ( "cuebreakpoints \"%s\" | shnsplit -d \"%s\" -o %s \"%s\" -O never"
+	% (options.cue, options.dest, fileFormat, fileName) )
+
+rs = 0
+rs = os.system(cmd)
+if rs != 0:
+	print ("Error: Something is wrong (cmd = '%s')" % cmd)
+	sys.exit(1)
+
+# unpack wv if need it
+if fileFormat == "wv":
+	for t in tracks:
+		cmd = ( "wvunpack \"%s/split-track%s.wv\" -o \"%s/split-track%s.wav\" "
+			% (options.dest, t.get('NUM'), options.dest, t.get('NUM') ) )
+		rs = os.system(cmd)
+		if rs != 0:
+			print ("Error: Something is wrong (cmd = '%s')" % cmd)
+			sys.exit(1)
+
+	cmd = "rm \"%s\"/*.wv" % options.dest
+	rs = os.system(cmd)
+	if rs != 0:
+		print ("Error: Something is wrong (cmd = '%s')" % cmd)
+		sys.exit(1)
+
+	fileFormat = "wav"
+
+# sys.exit(0)
+
+# ogg encoding
+cmd = ( "oggenc -a \"%s\" -l \"%s\" -b192 -d \"%s\" -G \"%s\" "
+	% (albumPerformer, albumTitle, albumDate, albumGenre) )
+
+for t in tracks:
+	cmd += ( "-N \"%s\" -t \"%s\" \"%s/split-track%s.%s\" "
+		% ( t.get('NUM'), t.get('TITLE'), options.dest, t.get('NUM'), fileFormat ) )
+
+cmd += "-n \"%s/%%n - %%t.ogg\" " % options.dest
+
+rs = os.system(cmd)
+if rs != 0:
+	print ("Error: Something is wrong (cmd = '%s')" % cmd)
+	sys.exit(1)
+
+cmd = "rm \"%s\"/*.%s" % (options.dest, fileFormat)
+rs = os.system(cmd)
+if rs != 0:
+	print ("Error: Something is wrong (cmd = '%s')" % cmd)
+	sys.exit(1)
+
+print("OK! DONE!")
