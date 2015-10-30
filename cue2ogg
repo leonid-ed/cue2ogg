@@ -5,6 +5,7 @@ import optparse
 import re
 import os.path
 import sys
+import subprocess
 
 def removeQuotes(s):
 	r = s if s[0] != '"' and s[-1] != '"' else s[1:-1]
@@ -49,6 +50,7 @@ albumPerformer = None
 trackNum       = None
 trackTitle     = None
 trackPerformer = None
+albumPicture    = None
 
 fileName = None
 
@@ -111,6 +113,18 @@ albumComment = removeQuotes( rems.get('COMMENT') )
 albumGenre   = removeQuotes( rems.get('GENRE')   )
 albumDiscId  = removeQuotes( rems.get('DISCID')  )
 
+# find an album picture
+dirname = os.path.abspath(os.path.dirname(options.cue))
+proc = subprocess.Popen(
+		[ ("find \"%s\" -type f -regex '.*/folder\.jpg'") % dirname ],
+		stdout=subprocess.PIPE, shell=True
+	)
+(out, err) = proc.communicate()
+
+if out:
+	out = out.decode('UTF-8')
+	if os.path.isfile(out.split('\n')[0]): albumPicture = out.split('\n')[0]
+
 print ("file:             '%s'" % fileName)
 print ("file format:      '%s'" % fileFormat)
 print ("album title:      '%s'" % albumTitle)
@@ -119,6 +133,7 @@ print ("album date:       '%s'" % albumDate)
 print ("album genre:      '%s'" % albumGenre)
 print ("album comment:    '%s'" % albumComment)
 print ("album disc id:    '%s'" % albumDiscId)
+print ("album picture:    '%s'" % albumPicture)
 print ("")
 for t in tracks:
 	print ( "%s / '%s' / '%s'"
@@ -194,6 +209,12 @@ if rs != 0:
 	sys.exit(1)
 
 cmd = "rm \"%s\"/*.%s" % (options.dest, fileFormat)
+rs = os.system(cmd)
+if rs != 0:
+	print ("Error: Something is wrong (cmd = '%s')" % cmd)
+	sys.exit(1)
+
+cmd = "cp -f \"%s\" \"%s/folder.jpg\"" % (albumPicture, options.dest)
 rs = os.system(cmd)
 if rs != 0:
 	print ("Error: Something is wrong (cmd = '%s')" % cmd)
