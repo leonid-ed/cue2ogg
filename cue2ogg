@@ -11,6 +11,16 @@ def removeQuotes(s):
 	r = s if s[0] != '"' and s[-1] != '"' else s[1:-1]
 	return r
 
+def execCmd(s):
+	rs = os.system(cmd)
+	if rs != 0:
+		print ("Error: Something is wrong (cmd = '%s')" % cmd)
+	return rs
+
+def execSubprocess(cmd):
+	proc = subprocess.Popen([ cmd ], stdout=subprocess.PIPE, shell=True)
+	return proc.communicate()
+
 version = "%prog 0.1"
 usage = "%prog -c file.cue -d destdir"
 parser = optparse.OptionParser(usage = usage, version = version)
@@ -50,7 +60,7 @@ albumPerformer = None
 trackNum       = None
 trackTitle     = None
 trackPerformer = None
-albumPicture    = None
+albumPicture   = None
 
 fileName = None
 
@@ -106,8 +116,6 @@ if len(info) > 0:
 	tracks.append(trackInfo)
 	info = {}
 
-# sys.exit(0)
-
 albumDate    = rems.get('DATE')
 albumComment = removeQuotes( rems.get('COMMENT') )
 albumGenre   = removeQuotes( rems.get('GENRE')   )
@@ -115,11 +123,9 @@ albumDiscId  = removeQuotes( rems.get('DISCID')  )
 
 # find an album picture
 dirname = os.path.abspath(os.path.dirname(options.cue))
-proc = subprocess.Popen(
-		[ ("find \"%s\" -type f -regex '.*/folder\.jpg'") % dirname ],
-		stdout=subprocess.PIPE, shell=True
+(out, err) = execSubprocess(
+		("find \"%s\" -type f -regex '.*/folder\.jpg'") % dirname
 	)
-(out, err) = proc.communicate()
 
 if out:
 	out = out.decode('UTF-8')
@@ -139,8 +145,6 @@ for t in tracks:
 	print ( "%s / '%s' / '%s'"
 		% (t.get('NUM'), t.get('PERFORMER'), t.get('TITLE')) )
 
-# sys.exit(0)
-
 # checks
 
 if not os.path.isfile(fileName):
@@ -155,7 +159,6 @@ print ()
 print ("destination directory: '%s'" % options.dest)
 
 # get approval
-
 print ()
 answer = input("Continue? (Y/n): ")
 if answer == "n": sys.exit(0)
@@ -163,37 +166,23 @@ if answer == "n": sys.exit(0)
 # sys.exit(0)
 
 # exec extended commands
-
 cmd = ( "cuebreakpoints \"%s\" | shnsplit -d \"%s\" -o %s \"%s\" -O never"
 	% (options.cue, options.dest, fileFormat, fileName) )
-
-rs = 0
-rs = os.system(cmd)
-if rs != 0:
-	print ("Error: Something is wrong (cmd = '%s')" % cmd)
-	sys.exit(1)
+if execCmd(cmd): sys.exit(1)
 
 # unpack wv if need it
 if fileFormat == "wv":
 	for t in tracks:
 		cmd = ( "wvunpack \"%s/split-track%s.wv\" -o \"%s/split-track%s.wav\" "
 			% (options.dest, t.get('NUM'), options.dest, t.get('NUM') ) )
-		rs = os.system(cmd)
-		if rs != 0:
-			print ("Error: Something is wrong (cmd = '%s')" % cmd)
-			sys.exit(1)
+		if execCmd(cmd): sys.exit(1)
 
 	cmd = "rm \"%s\"/*.wv" % options.dest
-	rs = os.system(cmd)
-	if rs != 0:
-		print ("Error: Something is wrong (cmd = '%s')" % cmd)
-		sys.exit(1)
+	if execCmd(cmd): sys.exit(1)
 
 	fileFormat = "wav"
 
-# sys.exit(0)
-
-# ogg encoding
+# encoding to ogg
 cmd = ( "oggenc -a \"%s\" -l \"%s\" -b192 -d \"%s\" -G \"%s\" "
 	% (albumPerformer, albumTitle, albumDate, albumGenre) )
 
@@ -202,22 +191,12 @@ for t in tracks:
 		% ( t.get('NUM'), t.get('TITLE'), options.dest, t.get('NUM'), fileFormat ) )
 
 cmd += "-n \"%s/%%n - %%t.ogg\" " % options.dest
-
-rs = os.system(cmd)
-if rs != 0:
-	print ("Error: Something is wrong (cmd = '%s')" % cmd)
-	sys.exit(1)
+if execCmd(cmd): sys.exit(1)
 
 cmd = "rm \"%s\"/*.%s" % (options.dest, fileFormat)
-rs = os.system(cmd)
-if rs != 0:
-	print ("Error: Something is wrong (cmd = '%s')" % cmd)
-	sys.exit(1)
+if execCmd(cmd): sys.exit(1)
 
 cmd = "cp -f \"%s\" \"%s/folder.jpg\"" % (albumPicture, options.dest)
-rs = os.system(cmd)
-if rs != 0:
-	print ("Error: Something is wrong (cmd = '%s')" % cmd)
-	sys.exit(1)
+if execCmd(cmd): sys.exit(1)
 
 print("OK! DONE!")
