@@ -21,6 +21,82 @@ def execSubprocess(cmd):
 	proc = subprocess.Popen([ cmd ], stdout=subprocess.PIPE, shell=True)
 	return proc.communicate()
 
+CUE_ALBUM_PERFORMER = "ALBUM_PERFORMER"
+CUE_FILENAME        = "FILENAME"
+CUE_FILEFORMAT      = "FILEFORMAT"
+ALBUM_TITLE      = "ALBUM_TITLE"
+ALBUM_DATE       = "ALBUM_DATE"
+ALBUM_PERFORMER  = "ALBUM_PERFORMER"
+ALBUM_COMMENT    = "ALBUM_COMMENT"
+ALBUM_GENGE      = "ALBUM_GENGE"
+ALBUM_COMMENT    = "ALBUM_COMMENT"
+ALBUM_DISCID     = "ALBUM_DISCID"
+ALBUM_PICTURE    = "ALBUM_PICTURE"
+ALBUM_TRACKS     = "ALBUM_TRACKS"
+TRACK_NUM       = "TRACK_NUM"
+TRACK_PERFORMER = "TRACK_PERFORMER"
+TRACK_TITLE     = "TRACK_TITLE"
+
+def parseCue(cue, cueInfo, albumData):
+	# cueInfo = {}
+	info = {}
+	isTrack = False
+	tracks = []
+	rems = {}
+
+	for cueLine in open(cue, 'r'):
+		cueLine = cueLine.strip();
+		if len(cueLine) == 0:
+			continue
+
+		sSection, sArgs = cueLine.split(None, 1)
+		vals = sArgs.split(None, 1)
+
+		if isTrack == False:
+			if sSection == "REM":
+				rems[ vals[0] ] = vals[1]
+			elif sSection == "PERFORMER":
+				albumData[ALBUM_PERFORMER] = removeQuotes(sArgs)
+			elif sSection == "TITLE":
+				albumData[ALBUM_TITLE] = removeQuotes(sArgs)
+			elif sSection == "FILE":
+				match = re.search("\"(.+)\"\s+WAVE", sArgs)
+				if not match is None: cueInfo[CUE_FILENAME] = match.group(1)
+				match = re.search("\".+\.(.+)\"\s+WAVE", sArgs)
+				if not match is None: cueInfo[CUE_FILEFORMAT] = match.group(1)
+			elif sSection == "TRACK":
+				isTrack = True
+
+		if isTrack == True:
+			if sSection == "TRACK":
+				# save a description of a previous track
+				if len(info) > 0:
+					trackInfo = {}
+					trackInfo[TRACK_TITLE]     = info.get('TITLE')
+					trackInfo[TRACK_PERFORMER] = info.get('PERFORMER')
+					trackInfo[TRACK_NUM] = trackNum
+					tracks.append(trackInfo)
+					info = {}
+
+				trackNum = vals[0]
+			else:
+				info[sSection] = removeQuotes(sArgs)
+
+	# save a description of the last track
+	if len(info) > 0:
+		trackInfo = {}
+		trackInfo[TRACK_TITLE]     = info.get('TITLE')
+		trackInfo[TRACK_PERFORMER] = info.get('PERFORMER')
+		trackInfo[TRACK_NUM] = trackNum
+		tracks.append(trackInfo)
+		info = {}
+
+	albumData[ALBUM_DATE]    = rems.get('DATE')
+	albumData[ALBUM_COMMENT] = removeQuotes( rems.get('COMMENT') )
+	albumData[ALBUM_GENGE]   = removeQuotes( rems.get('GENRE')   )
+	albumData[ALBUM_DISCID]  = removeQuotes( rems.get('DISCID')  )
+	albumData[ALBUM_TRACKS]  = tracks
+
 version = "%prog 0.1"
 usage = "%prog -c file.cue -d destdir"
 parser = optparse.OptionParser(usage = usage, version = version)
@@ -47,108 +123,41 @@ if not os.path.isfile(options.cue):
 	print ("Error: File '%s' is not exists" % options.cue)
 	sys.exit(1)
 
-# parse cue-file to get tags
-
-fileFormat     = None
-albumTitle     = None
-albumDate      = None
-albumGenre     = None
-albumComment   = None
-albumDiscId    = None
-albumPerformer = None
-
-trackNum       = None
-trackTitle     = None
-trackPerformer = None
-albumPicture   = None
-
-fileName = None
-
-rems = {}
-tracks = []
-info = {}
-isTrack = False
-
-for cue_line in open(options.cue, 'r'):
-	cue_line = cue_line.strip();
-	if len(cue_line) == 0:
-		continue
-
-	sSection, sArgs = cue_line.split(None, 1)
-	vals = sArgs.split(None, 1)
-
-	if isTrack == False:
-		if sSection == "REM":
-			rems[ vals[0] ] = vals[1]
-		elif sSection == "PERFORMER":
-			albumPerformer = removeQuotes(sArgs)
-		elif sSection == "TITLE":
-			albumTitle = removeQuotes(sArgs)
-		elif sSection == "FILE":
-			match = re.search("\"(.+)\"\s+WAVE", sArgs)
-			if not match is None: fileName = match.group(1)
-			match = re.search("\".+\.(.+)\"\s+WAVE", sArgs)
-			if not match is None: fileFormat = match.group(1)
-		elif sSection == "TRACK":
-			isTrack = True
-
-	if isTrack == True:
-		if sSection == "TRACK":
-			# save a description of a previous track
-			if len(info) > 0:
-				trackInfo = {}
-				trackInfo['TITLE']     = info.get('TITLE')
-				trackInfo['PERFORMER'] = info.get('PERFORMER')
-				trackInfo['NUM'] = trackNum
-				tracks.append(trackInfo)
-				info = {}
-
-			trackNum = vals[0]
-		else:
-			info[sSection] = removeQuotes(sArgs)
-
-# save a description of the last track
-if len(info) > 0:
-	trackInfo = {}
-	trackInfo['TITLE']     = info.get('TITLE')
-	trackInfo['PERFORMER'] = info.get('PERFORMER')
-	trackInfo['NUM'] = trackNum
-	tracks.append(trackInfo)
-	info = {}
-
-albumDate    = rems.get('DATE')
-albumComment = removeQuotes( rems.get('COMMENT') )
-albumGenre   = removeQuotes( rems.get('GENRE')   )
-albumDiscId  = removeQuotes( rems.get('DISCID')  )
+cueInfo = {}
+albumData = {}
 
 # find an album picture
 dirname = os.path.abspath(os.path.dirname(options.cue))
 (out, err) = execSubprocess(
 		("find \"%s\" -type f -iregex '.*/folder\.jpg'") % dirname
 	)
-
 if out:
 	out = out.decode('UTF-8')
-	if os.path.isfile(out.split('\n')[0]): albumPicture = out.split('\n')[0]
+	if os.path.isfile(out.split('\n')[0]):
+		albumData[ALBUM_PICTURE] = out.split('\n')[0]
 
-print ("file:             '%s'" % fileName)
-print ("file format:      '%s'" % fileFormat)
-print ("album title:      '%s'" % albumTitle)
-print ("album perforemer: '%s'" % albumPerformer)
-print ("album date:       '%s'" % albumDate)
-print ("album genre:      '%s'" % albumGenre)
-print ("album comment:    '%s'" % albumComment)
-print ("album disc id:    '%s'" % albumDiscId)
-print ("album picture:    '%s'" % albumPicture)
+if options.cue:
+	parseCue(options.cue, cueInfo, albumData)
+
+print (cueInfo)
+print ("file:             '%s'" % cueInfo[CUE_FILENAME])
+print ("file format:      '%s'" % cueInfo[CUE_FILEFORMAT])
+print ("album title:      '%s'" % albumData[ALBUM_TITLE])
+print ("album perforemer: '%s'" % albumData[ALBUM_PERFORMER])
+print ("album date:       '%s'" % albumData[ALBUM_DATE])
+print ("album genre:      '%s'" % albumData[ALBUM_GENGE])
+print ("album comment:    '%s'" % albumData[ALBUM_COMMENT])
+print ("album disc id:    '%s'" % albumData[ALBUM_DISCID])
+print ("album picture:    '%s'" % albumData[ALBUM_PICTURE])
 print ("")
-for t in tracks:
+for t in albumData[ALBUM_TRACKS]:
 	print ( "%s / '%s' / '%s'"
-		% (t.get('NUM'), t.get('PERFORMER'), t.get('TITLE')) )
+		% (t[TRACK_NUM], t[TRACK_PERFORMER], t[TRACK_TITLE]) )
 
 # checks
 
-if not os.path.isfile(fileName):
-	print ("Error: File '%s' is not exists" % fileName)
+if not os.path.isfile(cueInfo[CUE_FILENAME]):
+	print ("Error: File '%s' is not exists" % cueInfo[CUE_FILENAME])
 	sys.exit(1)
 
 if not os.path.isdir(options.dest):
@@ -165,16 +174,16 @@ if answer == "n": sys.exit(0)
 
 # sys.exit(0)
 
-# exec extended commands
+# split the one big file according to cue
 cmd = ( "cuebreakpoints \"%s\" | shnsplit -d \"%s\" -o %s \"%s\" -O never"
-	% (options.cue, options.dest, fileFormat, fileName) )
+	% (options.cue, options.dest, cueInfo[CUE_FILEFORMAT], cueInfo[CUE_FILENAME]) )
 if execCmd(cmd): sys.exit(1)
 
 # unpack wv if need it
-if fileFormat == "wv":
+if cueInfo[CUE_FILEFORMAT] == "wv":
 	for t in tracks:
 		cmd = ( "wvunpack \"%s/split-track%s.wv\" -o \"%s/split-track%s.wav\" "
-			% (options.dest, t.get('NUM'), options.dest, t.get('NUM') ) )
+			% (options.dest, t[TRACK_NUM], options.dest, t[TRACK_NUM] ) )
 		if execCmd(cmd): sys.exit(1)
 
 	cmd = "rm \"%s\"/*.wv" % options.dest
@@ -184,19 +193,20 @@ if fileFormat == "wv":
 
 # encoding to ogg
 cmd = ( "oggenc -a \"%s\" -l \"%s\" -b192 -d \"%s\" -G \"%s\" "
-	% (albumPerformer, albumTitle, albumDate, albumGenre) )
+	% (albumData[ALBUM_PERFORMER], albumData[ALBUM_TITLE], albumData[ALBUM_DATE], albumData[ALBUM_GENGE]) )
 
-for t in tracks:
+for t in albumData[ALBUM_TRACKS]:
 	cmd += ( "-N \"%s\" -t \"%s\" \"%s/split-track%s.%s\" "
-		% ( t.get('NUM'), t.get('TITLE'), options.dest, t.get('NUM'), fileFormat ) )
+		% ( t[TRACK_NUM], t[TRACK_TITLE], options.dest, t[TRACK_NUM], cueInfo[CUE_FILEFORMAT] ) )
 
 cmd += "-n \"%s/%%n - %%t.ogg\" " % options.dest
 if execCmd(cmd): sys.exit(1)
 
-cmd = "rm \"%s\"/*.%s" % (options.dest, fileFormat)
+cmd = "rm \"%s\"/*.%s" % (options.dest, cueInfo[CUE_FILEFORMAT])
 if execCmd(cmd): sys.exit(1)
 
-cmd = "cp -f \"%s\" \"%s/folder.jpg\"" % (albumPicture, options.dest)
-if execCmd(cmd): sys.exit(1)
+if albumData[ALBUM_PICTURE]:
+	cmd = "cp -f \"%s\" \"%s/folder.jpg\"" % (albumData[ALBUM_PICTURE], options.dest)
+	if execCmd(cmd): sys.exit(1)
 
 print("OK! DONE!")
