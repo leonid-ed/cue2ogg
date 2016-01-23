@@ -148,7 +148,10 @@ print ("album date:       '%s'" % albumData[ALBUM_DATE])
 print ("album genre:      '%s'" % albumData[ALBUM_GENGE])
 print ("album comment:    '%s'" % albumData[ALBUM_COMMENT])
 print ("album disc id:    '%s'" % albumData[ALBUM_DISCID])
-print ("album picture:    '%s'" % albumData[ALBUM_PICTURE])
+if albumData.get(ALBUM_PICTURE):
+	print ("album picture:    '%s'" % albumData[ALBUM_PICTURE])
+else:
+	print ("album picture:    None")
 print ("")
 for t in albumData[ALBUM_TRACKS]:
 	print ( "%s / '%s' / '%s'"
@@ -205,7 +208,7 @@ if execCmd(cmd): sys.exit(1)
 cmd = "rm \"%s\"/*.%s" % (options.dest, cueInfo[CUE_FILEFORMAT])
 if execCmd(cmd): sys.exit(1)
 
-if albumData[ALBUM_PICTURE]:
+if albumData.get(ALBUM_PICTURE):
 	cmd = "cp -f \"%s\" \"%s/folder.jpg\"" % (albumData[ALBUM_PICTURE], options.dest)
 	if execCmd(cmd): sys.exit(1)
 
