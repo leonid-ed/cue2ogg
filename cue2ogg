@@ -8,8 +8,13 @@ import sys
 import subprocess
 
 def removeQuotes(s):
+	if s is None: return s
 	r = s if s[0] != '"' and s[-1] != '"' else s[1:-1]
-	return r
+	r = r.strip()
+	if len(r) == 0:
+		return None
+	else:
+		return r
 
 def execCmd(s):
 	rs = os.system(cmd)
@@ -36,6 +41,9 @@ ALBUM_TRACKS     = "ALBUM_TRACKS"
 TRACK_NUM       = "TRACK_NUM"
 TRACK_PERFORMER = "TRACK_PERFORMER"
 TRACK_TITLE     = "TRACK_TITLE"
+
+def inputString(s):
+	return input(s)
 
 def parseCue(cue, cueInfo, albumData):
 	# cueInfo = {}
@@ -97,6 +105,11 @@ def parseCue(cue, cueInfo, albumData):
 	albumData[ALBUM_DISCID]  = removeQuotes( rems.get('DISCID')  )
 	albumData[ALBUM_TRACKS]  = tracks
 
+	if albumData[ALBUM_DATE] is None:
+		albumData[ALBUM_DATE] = inputString("Enter Album Date: ")
+	if albumData[ALBUM_GENGE] is None:
+		albumData[ALBUM_GENGE] = inputString("Enter Genre: ")
+
 version = "%prog 0.1"
 usage = "%prog -c file.cue -d destdir"
 parser = optparse.OptionParser(usage = usage, version = version)
@@ -120,7 +133,7 @@ if options.cue is None or options.dest is None:
 
 # check if cue-file does not exist
 if not os.path.isfile(options.cue):
-	print ("Error: File '%s' is not exists" % options.cue)
+	print ("Error: File '%s' is not exist" % options.cue)
 	sys.exit(1)
 
 cueInfo = {}
@@ -158,13 +171,13 @@ for t in albumData[ALBUM_TRACKS]:
 		% (t[TRACK_NUM], t[TRACK_PERFORMER], t[TRACK_TITLE]) )
 
 # checks
-
+cueInfo[CUE_FILENAME] = os.path.join(dirname, cueInfo[CUE_FILENAME])
 if not os.path.isfile(cueInfo[CUE_FILENAME]):
-	print ("Error: File '%s' is not exists" % cueInfo[CUE_FILENAME])
+	print ("Error: File '%s' is not exist" % cueInfo[CUE_FILENAME])
 	sys.exit(1)
 
 if not os.path.isdir(options.dest):
-	print ("Error: Directory '%s' is not exists" % options.dest)
+	print ("Error: Directory '%s' is not exist" % options.dest)
 	sys.exit(1)
 
 print ()
